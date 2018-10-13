@@ -1,0 +1,2 @@
+Digit[[:space:]]Recognition/test.csv filter=lfs diff=lfs merge=lfs -text
+Digit[[:space:]]Recognition/train.csv filter=lfs diff=lfs merge=lfs -text
