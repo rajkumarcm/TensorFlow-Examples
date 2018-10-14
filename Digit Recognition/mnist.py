@@ -29,6 +29,14 @@ class Digit_Recognition:
     def add_conv(self, input, global_i, local_i, stride=[1,1,1,1], padding='SAME'):
         output_channels = self.neurons[global_i]
         input_channels = input.shape[::-1][0].value
+        """
+        if local_i >= 0:
+        	mean, variance = tf.nn.moments(input, axes=[0])
+       		beta = tf.Variable(tf.constant(0.0, shape=[input_channels]),name='beta', trainable=True)
+        	gamma = tf.Variable(tf.constant(1.0, shape=[input_channels]), name='gamma', trainable=True)
+        	input = tf.nn.batch_normalization(input, mean, variance,offset=beta,scale=gamma,variance_epsilon=1e-5)
+        """
+        
         weight = tf.Variable(tf.truncated_normal(shape=[5,5,input_channels,output_channels], \
                                                  name="Kernel%d" % (local_i + 1)))
         activation = self.activations[global_i]
@@ -98,23 +106,17 @@ class Digit_Recognition:
             saver = tf.train.Saver()
 
             sess.run(tf.global_variables_initializer())
-            fig, ax = plt.subplots(1,2)
-            fig.set_figheight(8)
-            fig.set_figwidth(16)
+            fig = plt.figure()
+            # fig.set_figheight(8)
+			# fig.set_figwidth(16)
 
             plt.grid(True)
-            ax[0].set_title("Digit Recognition Training Performance")
-            ax[0].set_xlabel("Epoch")
-            ax[0].set_ylabel("Cross Entropy")
-            ax[0].set_xlim([0,self.epochs*self.steps])
-
-            plt.grid(True)
-            ax[1].set_title("Digit Recognition Training Performance")
-            ax[1].set_xlabel("Epoch")
-            ax[1].set_ylabel("F1 score in %")
-            ax[1].set_xlim([0, self.epochs*self.steps])
-
+            plt.title("Digit Recognition Training Performance")
+            plt.xlabel("Epoch")
+            plt.ylabel("Cross Entropy")
+            # plt.set_xlim([0,self.epochs*self.steps])
             plt.tight_layout()
+            
             global_count = 0
             for epoch in range(self.epochs):
                 si = 0
@@ -139,22 +141,20 @@ class Digit_Recognition:
                     print("epoch %d step: %d : tr_cost: %.3f, vl_cost: %.3f, tr_accuracy: %d%%, vl_accuracy: %d%%" %\
                          (epoch,step,tr_cost,vl_cost,tr_accuracy,vl_accuracy))
 
-		    """
-                    if epoch > 0:
-                        ax[0].scatter(global_count,tr_cost,c='b',marker='o',linewidths=0.5,alpha=0.7,label="Training Error")
-                        ax[0].scatter(global_count,vl_cost,c='r',marker='^',linewidths=0.5,alpha=0.7,label="Validation Error")
+                    if (epoch == 0 and step >= 10) or (epoch >= 1):
+                        plt.scatter(global_count,tr_cost,c='b',marker='o',linewidths=0.5,alpha=0.7,label="Training Error")
+                        plt.scatter(global_count,vl_cost,c='r',marker='^',linewidths=0.5,alpha=0.7,label="Validation Error")
 
-                        ax[1].scatter(global_count,tr_accuracy,c='b',marker='o',linewidths=0.5,alpha=0.7,\
+                        """ax[1].scatter(global_count,tr_accuracy,c='b',marker='o',linewidths=0.5,alpha=0.7,\
                                       label="Accuracy on training data")
                         ax[1].scatter(global_count, vl_accuracy, c='r', marker='^', linewidths=0.5, alpha=0.7, \
-                                      label="Accuracy on validation data")
+                                      label="Accuracy on validation data")"""
                         plt.pause(0.001)
                         # plt.draw_all()
 
-                        if epoch == 0 and step == 11:
+                        if epoch == 0 and step == 10:
                             plt.legend()
-                            # plt.show()
-                    """
+                    
                     si = ei
                     ei = ei + self.batch_size
                     global_count += 1
