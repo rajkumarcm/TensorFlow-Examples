@@ -29,14 +29,6 @@ class Digit_Recognition:
     def add_conv(self, input, global_i, local_i, stride=[1,1,1,1], padding='SAME'):
         output_channels = self.neurons[global_i]
         input_channels = input.shape[::-1][0].value
-        """
-        if local_i >= 0:
-        	mean, variance = tf.nn.moments(input, axes=[0])
-       		beta = tf.Variable(tf.constant(0.0, shape=[input_channels]),name='beta', trainable=True)
-        	gamma = tf.Variable(tf.constant(1.0, shape=[input_channels]), name='gamma', trainable=True)
-        	input = tf.nn.batch_normalization(input, mean, variance,offset=beta,scale=gamma,variance_epsilon=1e-5)
-        """
-        
         weight = tf.Variable(tf.truncated_normal(shape=[5,5,input_channels,output_channels], \
                                                  name="Kernel%d" % (local_i + 1)))
         activation = self.activations[global_i]
@@ -65,6 +57,15 @@ class Digit_Recognition:
         else:
             return temp
 
+    def add_batchnorm(self, input, local_i):
+        # BATCH NORMALIZATION
+        input_channels = input.shape[::-1][0].value
+        mean, variance = tf.nn.moments(input, axes=[0])
+        beta = tf.Variable(tf.constant(0.0, shape=[input_channels]),name='beta', trainable=True)
+        gamma = tf.Variable(tf.constant(1.0, shape=[input_channels]), name='gamma', trainable=True)
+        return tf.nn.batch_normalization(input, mean, variance, offset=beta, scale=gamma, variance_epsilon=1e-5, \
+                                         name="BatchNormalization%d"%local_i)
+
     def predict(self, sess, raw_output, feed_dict):
         return sess.run(tf.argmax(tf.nn.softmax(raw_output), axis=1), feed_dict)
 
@@ -77,7 +78,9 @@ class Digit_Recognition:
         conv_count = 0
         dense_count = 0
         maxpool_count = 0
-        lr = self.lr
+        batchnorm_count = 0
+        lr = tf.placeholder(dtype=tf.float32,shape=[])
+        lr_new = self.lr
 
         #graph = tf.get_default_graph
         #with graph:
@@ -97,12 +100,16 @@ class Digit_Recognition:
                     output = self.add_dense(output, global_i, dense_count)
                     dense_count += 1
 
+                elif layer == 'batchnorm':
+                    output = self.add_batchnorm(output, batchnorm_count)
+                    batchnorm_count += 1
+
                 else:
                     raise ValueError("Invalid layer...")
 
             cost = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actual, logits=output, name="CrossEntropy")
             cost = tf.reduce_mean(cost)
-            optimize = tf.train.MomentumOptimizer(lr,momentum=0.8).minimize(cost)
+            optimize = tf.train.MomentumOptimizer(lr,momentum=0.9).minimize(cost)
             saver = tf.train.Saver()
 
             sess.run(tf.global_variables_initializer())
@@ -118,21 +125,21 @@ class Digit_Recognition:
             plt.tight_layout()
             
             global_count = 0
+            total_steps = self.epochs * self.steps
             for epoch in range(self.epochs):
                 si = 0
                 ei = self.batch_size
                 for step in range(self.steps):
-                    tr_feed = {output_original: input[si:ei,:,:,:].reshape([-1,H,W,C]), actual: y[si:ei]}
-                    vl_feed = {output_original: vl_input[si:ei,:,:,:].reshape([-1,H,W,C]), actual: vl_y[si:ei]}
+                    tr_feed = {output_original: input[si:ei,:,:,:].reshape([-1,H,W,C]), actual: y[si:ei], lr:lr_new}
+                    vl_feed = {output_original: vl_input[si:ei,:,:,:].reshape([-1,H,W,C]), actual: vl_y[si:ei], \
+                               lr:lr_new}
                     tr_cost, _ = sess.run([cost, optimize], tr_feed)
-                    tr_cost = np.mean(tr_cost)
 
                     pred_output = self.predict(sess,output,tr_feed)
                     tr_conf_mat, tr_precision, tr_recall, tr_f1_score = get_accuracy(y[si:ei],pred_output,self.n_labels)
                     tr_accuracy = int(np.mean(tr_f1_score)*100)
 
                     vl_cost, _ = sess.run([cost, optimize], vl_feed)
-                    vl_cost = np.mean(vl_cost)
                     pred_output = self.predict(sess, output, vl_feed)
                     vl_conf_mat, vl_precision, vl_recall, vl_f1_score = get_accuracy(vl_y[si:ei], pred_output, \
                                                                                      self.n_labels)
@@ -142,15 +149,11 @@ class Digit_Recognition:
                          (epoch,step,tr_cost,vl_cost,tr_accuracy,vl_accuracy))
 
                     if (epoch == 0 and step >= 10) or (epoch >= 1):
-                        plt.scatter(global_count,tr_cost,c='b',marker='o',linewidths=0.5,alpha=0.7,label="Training Error")
-                        plt.scatter(global_count,vl_cost,c='r',marker='^',linewidths=0.5,alpha=0.7,label="Validation Error")
-
-                        """ax[1].scatter(global_count,tr_accuracy,c='b',marker='o',linewidths=0.5,alpha=0.7,\
-                                      label="Accuracy on training data")
-                        ax[1].scatter(global_count, vl_accuracy, c='r', marker='^', linewidths=0.5, alpha=0.7, \
-                                      label="Accuracy on validation data")"""
+                        plt.scatter(global_count,tr_cost,c='b',marker='o',linewidths=0.5,alpha=0.7,\
+                                    label="Training Error")
+                        plt.scatter(global_count,vl_cost,c='r',marker='^',linewidths=0.5,alpha=0.7,\
+                                    label="Validation Error")
                         plt.pause(0.001)
-                        # plt.draw_all()
 
                         if epoch == 0 and step == 10:
                             plt.legend()
@@ -158,7 +161,8 @@ class Digit_Recognition:
                     si = ei
                     ei = ei + self.batch_size
                     global_count += 1
-
+                if (epoch != 0) and (epoch%10 == 0):
+                    lr_new /= 10
             plt.show()
 
             # Save the model
@@ -187,6 +191,14 @@ if __name__ == '__main__':
     del temp
     print("Loading graph")
     N,M = X.shape
+    """----------------------------------------------
+    LIMITING THE DATA BY HALF FOR DEBUGGING PURPOSE
+    ----------------------------------------------"""
+    lim = int(np.floor(N / 2))
+    X = X[:lim,:]
+    y = y[:lim]
+    N,M = X.shape
+    #----------------------------------------------
     lim = int(np.floor(N/2))
     X_tr = X[:lim,:]
     y_tr = y[:lim]
@@ -197,22 +209,14 @@ if __name__ == '__main__':
     steps = int(X_tr.shape[0]/batch_size)
 
     dr = Digit_Recognition(lr=1e-2, \
-                           layers=['conv', 'maxpool', 'conv', 'maxpool', 'dense', 'dense'], \
-                           neurons=[32, None, 64, None, 100, 10], \
-                           activations=[tf.nn.relu, None, tf.nn.relu, None, tf.nn.relu, None], \
+                           layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', 'batchnorm', 'dense', \
+                                   'batchnorm', 'dense'], \
+                           neurons=[32, None, None, 64, None, None, 100, None, 10], \
+                           activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, tf.nn.relu, None, None], \
                            n_class=10,
-                           epochs=500,
-                           batch_size = batch_size,
+                           epochs=30,
+                           batch_size=batch_size,
                            steps=steps)
-
-
-    # Uncomment for Debugging
-    # X_tr = X[:100, :]
-    # y_tr = y[:100]
-    # X_vl = X[100:200, :]
-    # y_vl = y[100:200]
-    #------------------------
-
 
     H = int(np.sqrt(M))
     W = H
