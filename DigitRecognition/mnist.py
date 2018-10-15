@@ -142,7 +142,10 @@ class MNIST:
 
         # Remove the code after debugging--------
         X_test, y = load_data("data/test.csv", "\n", ",", target_col=0, numeric_target=True)
+
+        # Uncomment this only for testing the accuracy of prediction visually
         # X_test, y = self.get_sample(X_test, y, size=10)
+
         X_test = np.hstack((y.reshape([-1,1]), X_test))
         del y
         #----------------------------------------
@@ -152,38 +155,40 @@ class MNIST:
         W = H
         X_test = np.reshape(X_test,[-1,H,W,1])
         # label = np.reshape(label,[-1])
-        predicted = None
+        predicted = []
+        batch_size = 1000
+        steps = int(np.floor(N/batch_size))
 
-        if self.digit_rec is None:
-            # Check whether checkpoint is present
-            if os.path.isfile('tmp/model_final.meta'):
-                # If a checkpoint is present, then we can perhaps restore
-                dr = Simple_TF(lr=1e-2, \
-                               layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', 'batchnorm', 'dense', \
-                                       'batchnorm', 'dense'], \
-                               neurons=[32, None, None, 64, None, None, 100, None, 11], \
-                               activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, tf.nn.relu, None, None], \
-                               n_class=10,
-                               epochs=30,
-                               batch_size=None,
-                               steps=None,
-                               train=False,
-                               checkpoint='model_final.meta')
-                predicted = dr.main(X_test, y=None, vl_input=None, vl_y=None)
-            else:
-                """
-                1. Instance of Digit Recognition is not found
-                2. No trained model were found
-                So the only left is to train the model if this method test is called directly.
-                """
-                self.train()
-                self.test()
+        # Check whether checkpoint is present
+        if os.path.isfile('tmp/model_final.meta'):
+            # If a checkpoint is present, then we can perhaps restore
+            dr = Simple_TF(lr=1e-2, \
+                           layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', 'batchnorm', 'dense', \
+                                   'batchnorm', 'dense'], \
+                           neurons=[32, None, None, 64, None, None, 100, None, 11], \
+                           activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, tf.nn.relu, None, None], \
+                           n_class=10,
+                           epochs=30,
+                           batch_size=None,
+                           steps=None,
+                           train=False,
+                           checkpoint='model_final.meta')
+            si = 0
+            ei = batch_size
+            for step in range(steps):
+                predicted.append(dr.main(X_test[si:ei,:,:,:].reshape([-1,H,W,1]), y=None, vl_input=None, vl_y=None))
+                si = ei
+                ei = si + batch_size
+            predicted = np.concatenate(predicted,axis=0)
+            predicted = np.reshape(predicted,[-1,1])
         else:
             """
-            If Digit Recognition instance is up running, then make use of it.
+            1. Instance of Digit Recognition is not found
+            2. No trained model were found
+            So the only left is to train the model if this method test is called directly.
             """
-            self.digit_rec.train = False
-            predicted = self.digit_rec.main(X=X_test, y=None, vl_input=None, vl_y=False)
+            self.train()
+            self.test()
 
         # conf_mat, precision, recall, f1_score = get_accuracy(label, predicted, n_class=10)
         # print("Confusion Matrix: \n{}\n".format(conf_mat))
@@ -193,9 +198,7 @@ class MNIST:
         # print("Average F1 Score: %d" % (int(np.mean(f1_score))))
         np.save("prediction_submission.npy",predicted)
 
-
 if __name__ == '__main__':
     mnist = MNIST()
-    mnist.train()
-    # mnist.test()
-    mnist.digit_rec.close_session()
+    # mnist.train()
+    mnist.test()

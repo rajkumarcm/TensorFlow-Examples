@@ -1,2 +1,2 @@
-model_checkpoint_path: "model.cpkt-29"
-all_model_checkpoint_paths: "model.cpkt-29"
+model_checkpoint_path: "model_final"
+all_model_checkpoint_paths: "model_final"
