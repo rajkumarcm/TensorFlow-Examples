@@ -7,8 +7,10 @@ from Simple_TF import Simple_TF
 import numpy as np
 from data import load_data
 import tensorflow as tf
-from accuracy import get_accuracy
+from matplotlib import pyplot as plt
 import os
+import time
+import progressbar
 
 class MNIST:
 
@@ -98,7 +100,8 @@ class MNIST:
         return X, y
 
     def train(self):
-
+        # with tf.Session() as sess:
+        print("Starting training phase...")
         X, y = self.get_data()
         N, _ = X.shape
         size = 31000
@@ -106,18 +109,8 @@ class MNIST:
         N, M = X_tr.shape
         batch_size = 1000
         steps = int(N / batch_size)
-
-        dr = Simple_TF(lr=1e-2, \
-                       layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', 'batchnorm', 'dense', \
-                               'batchnorm', 'dense'], \
-                       neurons=[32, None, None, 64, None, None, 100, None, 11], \
-                       activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, tf.nn.relu, None, None], \
-                       n_class=10,
-                       epochs=30,
-                       batch_size=batch_size,
-                       steps=steps,
-                       train=True,
-                       checkpoint='model_final')
+        epochs = 30
+        lr = 1e-2
 
         H = int(np.sqrt(M))
         W = H
@@ -128,67 +121,124 @@ class MNIST:
         X_vl = np.reshape(X_vl, [N_vl, H, W, 1])  # Let's just assume we only have one channel for the moment
         y_vl = np.reshape(y_vl, [-1])
 
+        sample = X_tr[0,:,:,0].reshape([1,H,W,1])
+
+        dr = Simple_TF(sample=sample,
+                       lr=lr, \
+                       layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', 'batchnorm', 'dense', \
+                               'batchnorm', 'dense'], \
+                       neurons=[32, None, None, 64, None, None, 100, None, 11], \
+                       activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, tf.nn.relu, None, None], \
+                       n_class=10,
+                       epochs=epochs,
+                       steps=steps,
+                       restore=False,
+                       checkpoint='model_final')
+
+
+        plt.figure()
+        plt.grid(True)
+        plt.title("Digit Recognition Training Performance")
+        plt.xlabel("Step")
+        plt.ylabel("Cross Entropy")
+        plt.tight_layout()
+
         """//////////////////////////////////////////////////////////////////////////////////////
         Increase the output labels by 1 so that 0th class label is considered 1, which in turn
         prevents cross entropy from returning nan
         //////////////////////////////////////////////////////////////////////////////////////"""
-        dr.main(X_tr, y_tr+1, X_vl, y_vl+1)
+        si = 0
+        ei = batch_size
+        for epoch in range(epochs):
+            for step in range(steps):
+                global_count = (epoch * step) + step
+                vl_indices = np.random.randint(0,N_vl,batch_size)
+                tr_cost, vl_cost, tr_accuracy, vl_accuracy = dr.optimize(X_tr[si:ei,:,:,0].reshape([-1,H,W,1]),\
+                                                                         y_tr[si:ei]+1, \
+                                                                         X_vl[vl_indices,:,:,0].reshape([-1,H,W,1]), \
+                                                                         y_vl[vl_indices]+1, \
+                                                                         lr, global_count)
+                print("epoch %d step: %d : tr_cost: %.3f, vl_cost: %.3f, tr_accuracy: %d%%, vl_accuracy: %d%%" % \
+                      (epoch, step, tr_cost, vl_cost, tr_accuracy, vl_accuracy))
 
+                if (epoch == 0 and step >= 10) or (epoch >= 1):
+                    plt.scatter(global_count, tr_cost, c='b', marker='o', linewidths=0.5, alpha=0.7, \
+                                label="Training Error")
+                    plt.scatter(global_count, vl_cost, c='r', marker='^', linewidths=0.5, alpha=0.7, \
+                                label="Validation Error")
+                    plt.pause(0.001)
+
+                if epoch == 0 and step == 10:
+                    plt.legend()
+
+                si = ei
+                ei += batch_size
+
+            if (epoch != 0) and (epoch % 10 == 0):
+                lr /= 10
+
+        plt.show()
         self.digit_rec = dr
 
     def test(self):
         print("Loading test data")
         #X_test, label = self.get_test_data()
 
-        # Remove the code after debugging--------
-        X_test, y = load_data("data/test.csv", "\n", ",", target_col=0, numeric_target=True)
+        try:
+            X_test = np.load("mnist_test.npy")
+        except Exception:
+            # Remove the code after debugging--------
+            X_test, y = load_data("data/test.csv", "\n", ",", target_col=0, numeric_target=True)
 
-        # Uncomment this only for testing the accuracy of prediction visually
-        # X_test, y = self.get_sample(X_test, y, size=10)
-
-        X_test = np.hstack((y.reshape([-1,1]), X_test))
-        del y
+            # Uncomment this only for testing the accuracy of prediction visually
+            # X_test, y = self.get_sample(X_test, y, size=10)
+            X_test = np.hstack((y.reshape([-1,1]), X_test))
+            del y
+            np.save("mnist_test.npy",X_test)
         #----------------------------------------
-
+        batch_size = 1000
         N, M = X_test.shape
         H = int(np.sqrt(M))
         W = H
-        X_test = np.reshape(X_test,[-1,H,W,1])
-        # label = np.reshape(label,[-1])
+        X_test = np.reshape(X_test,[N,H,W,1])
+        steps = int(np.floor(N / batch_size))
         predicted = []
-        batch_size = 1000
-        steps = int(np.floor(N/batch_size))
 
-        # Check whether checkpoint is present
-        if os.path.isfile('tmp/model_final.meta'):
-            # If a checkpoint is present, then we can perhaps restore
-            dr = Simple_TF(lr=1e-2, \
-                           layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', 'batchnorm', 'dense', \
-                                   'batchnorm', 'dense'], \
-                           neurons=[32, None, None, 64, None, None, 100, None, 11], \
-                           activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, tf.nn.relu, None, None], \
-                           n_class=10,
-                           epochs=30,
-                           batch_size=None,
-                           steps=None,
-                           train=False,
-                           checkpoint='model_final.meta')
-            si = 0
-            ei = batch_size
+        si = 0
+        ei = batch_size
+        # with tf.Session() as sess:
+        with progressbar.ProgressBar(max_value=steps) as bar:
             for step in range(steps):
-                predicted.append(dr.main(X_test[si:ei,:,:,:].reshape([-1,H,W,1]), y=None, vl_input=None, vl_y=None))
+                if self.digit_rec is not None:
+                    predicted.append(self.digit_rec.predict(X=X_test[si:ei,:,:,:].reshape([-1,H,W,1]), \
+                                                            feed_dict=None))
+                elif os.path.isfile('tmp/model_final.meta'):
+                    sample = X_test[0,:,:,0].reshape([1,H,W,1])
+                    self.digit_rec = Simple_TF(sample=sample,
+                                               lr=1e-2, \
+                                               layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', \
+                                                        'batchnorm', 'dense', \
+                                                        'batchnorm', 'dense'], \
+                                               neurons=[32, None, None, 64, None, None, 100, None, 11], \
+                                               activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, \
+                                                            tf.nn.relu, None, None], \
+                                               n_class=10,
+                                               epochs=None,
+                                               steps=None,
+                                               restore=True,
+                                               checkpoint='model-2.meta')
+                    predicted.append(self.digit_rec.predict(X=X_test[si:ei,:,:,:].reshape([-1,H,W,1]), \
+                                                            feed_dict=None))
+                else:
+                    raise Exception("Neither Digit Recognition instance with tuned parameter nor "
+                                    "valid checkpoint found to make predictions")
                 si = ei
                 ei = si + batch_size
-            predicted = np.concatenate(predicted,axis=0)
-            predicted = np.reshape(predicted,[-1,1])
-        else:
-            """
-            1. Instance of Digit Recognition is not found
-            2. No trained model were found
-            So the only left is to train the model if this method test is called directly.
-            """
-            self.train()
-            self.test()
+                bar.update(step)
+                time.sleep(0.01)
+
+        predicted = np.concatenate(predicted, axis=0)
+        predicted = np.reshape(predicted, [-1, 1])
 
         # conf_mat, precision, recall, f1_score = get_accuracy(label, predicted, n_class=10)
         # print("Confusion Matrix: \n{}\n".format(conf_mat))
