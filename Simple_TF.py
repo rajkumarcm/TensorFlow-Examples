@@ -20,8 +20,10 @@ class Simple_TF:
     output = None
     cost = None
     lr_ = None
+    proj_dir = None
 
-    def __init__(self, sample, lr, layers, neurons, activations, n_class, epochs, steps, restore, checkpoint=None):
+    def __init__(self, proj_dir, sample, lr, layers, neurons, activations, n_class, epochs, steps, restore, checkpoint=None):
+        self.proj_dir = proj_dir
         self.lr = lr
         self.layers = layers
         self.neurons = neurons
@@ -42,8 +44,8 @@ class Simple_TF:
         self.sess = tf.Session()
         if restore:
             print("Restoring model...")
-            imported_meta = tf.train.import_meta_graph("tmp/%s" % self.checkpoint)
-            imported_meta.restore(self.sess, tf.train.latest_checkpoint('tmp/'))
+            imported_meta = tf.train.import_meta_graph("%s/tmp/%s" % (proj_dir,checkpoint))
+            imported_meta.restore(self.sess, tf.train.latest_checkpoint('%s/tmp/'%proj_dir))
         else:
             self.sess.run(tf.global_variables_initializer())
 
@@ -124,9 +126,7 @@ class Simple_TF:
 
     def optimize(self, X, y, vl_input, vl_y, lr, global_count):
         _,H,W,C = X.shape
-
         try:
-
             tr_feed = {self.output_original: X, self.actual: y, self.lr_: lr}
 
             # vl_indices = np.random.randint(0, vl_input.shape[0], size=self.batch_size)
@@ -156,7 +156,7 @@ class Simple_TF:
         except KeyboardInterrupt:
             save = raw_input("Keyboard interrupt received. Do you want to save the training? (y/n)\n")
             if save == "y":
-                save_path = self.saver.save(self.sess, "tmp/model", global_step=global_count)
+                save_path = self.saver.save(self.sess, "%s/tmp/model"%(self.proj_dir), global_step=global_count)
                 print("Model saved in path: %s" % save_path)
             else:
                 print("Model not saved")
@@ -169,7 +169,10 @@ class Simple_TF:
             feed_dict = {self.output_original: X}
         return self.sess.run(tf.argmax(tf.nn.softmax(self.output), axis=1) -1, feed_dict)
 
-    def save_model(self):
+    def save_model(self, filename=None):
         # Save the model
-        save_path = self.saver.save(self.sess, "tmp/%s" % self.checkpoint)
+        if filename is None:
+            filename = self.checkpoint
+
+        save_path = self.saver.save(self.sess, "%s/tmp/%s" %(self.proj_dir,filename))
         print("Model saved in path: %s" % save_path)

@@ -5,7 +5,7 @@ Program: Digit Recognition using Deep Learning
 --------------------------------------------"""
 from Simple_TF import Simple_TF
 import numpy as np
-from data import load_data
+from data import Data
 import tensorflow as tf
 from matplotlib import pyplot as plt
 import os
@@ -15,6 +15,19 @@ import progressbar
 class MNIST:
 
     digit_rec = None
+    proj_dir = None
+    data = Data()
+
+    def __init__(self):
+        self.proj_dir = self.get_proj_dir()
+
+    def get_proj_dir(self):
+        path = os.path.abspath("")
+        dir_parts = path.split("/")
+        curr_dir = dir_parts[::-1][0]
+        if curr_dir == "TensorFlow_Examples":
+            path = os.path.abspath("DigitRecognition")
+        return path
 
     def get_data(self, lim=None):
         """
@@ -22,12 +35,11 @@ class MNIST:
         :param lim: (Optional) Int that controls the size of data returned
         :return: X (feature data), y (target)
         """
-        X = None
-        y = None
-
+        path = ""
         try:
+            path = self.proj_dir
             print("Attempting to load file")
-            temp = np.load('mnist.npy')
+            temp = np.load("%s/mnist.npy"%path)
             N, M = temp.shape
             X = temp[:, :M - 1]
             y = temp[:, M - 1]
@@ -35,10 +47,10 @@ class MNIST:
         except Exception:
             print("File not found")
             print("Processing data")
-            X, y = load_data("train.csv", "\n", ",", target_col=0, numeric_target=True)
+            X, y = self.data.load_csv("%s/data/train.csv"%path, "\n", ",", target_col=0, numeric_target=True)
             temp = np.hstack((X, y.reshape([-1, 1])))
             print("Saving processed data")
-            np.save('mnist.npy', temp)
+            np.save(os.path.abspath("../mnist.npy"), temp)
 
         N, M = X.shape
         if lim is not None:
@@ -47,31 +59,7 @@ class MNIST:
                 y = y[:lim]
             else:
                 raise ValueError("limit cannot be larger than the total size")
-
         return X, y
-
-    def partition_data(self, X, y, tr_size, shuffle=False):
-        """
-        Splits the data into training, and validation set
-        :param X: Array must be in shape: [Samples,Features]
-        :param y: Array must be in shape: [Samples]
-        :param tr_size: Int that represent the size of training set
-        :param shuffle: (Optional) Boolean flag that allow the data to be shuffled prior to partitioning
-        :return: X_tr, y_tr, X_vl, y_vl after shuffling (if enabled), and partitioning
-        """
-        N, M = X.shape
-        if shuffle:
-            indices = np.arange(0,N)
-            np.random.shuffle(indices)
-            X = X[indices,:]
-            y = y[indices]
-
-        lim = tr_size
-        X_tr = X[:lim, :]
-        y_tr = y[:lim]
-        X_vl = X[lim:, :]
-        y_vl = y[lim:]
-        return X_tr, y_tr, X_vl, y_vl
 
     def get_test_data(self):
         """
@@ -80,36 +68,17 @@ class MNIST:
         while training network occupying memory
         :return: Training data input X, Training data target y
         """
-        X, y = load_data("data/test.csv", "\n", ",", target_col=0, numeric_target=True)
-
+        X, y = self.data.load_csv("data/test.csv", "\n", ",", target_col=0, numeric_target=True)
         return X, y
 
-    def get_sample(self, X, y, size=1):
-        """
-        As the name suggests, this function simply returns samples
-        from given data
-        :param X: Array must be of shape: [Samples, Features]
-        :param y: Array must be of shape: [Samples]
-        :param size: (Optional) Int that controls the number of samples returned
-        :return: Sample input X, Sample target y
-        """
-        N, M = X.shape
-        indices = np.random.randint(0,N,size)
-        X = X[indices,:]
-        y = y[indices]
-        return X, y
-
-    def train(self):
-        # with tf.Session() as sess:
-        print("Starting training phase...")
-        X, y = self.get_data()
+    def train(self, model, lim=None, partition_size=31000, epochs=30, save_model=True):
+        X, y = self.get_data(lim)
         N, _ = X.shape
-        size = 31000
-        X_tr, y_tr, X_vl, y_vl = self.partition_data(X, y, tr_size=size, shuffle=True)
+        size = partition_size
+        X_tr, y_tr, X_vl, y_vl = self.data.partition_data(X, y, tr_size=size, shuffle=True)
         N, M = X_tr.shape
         batch_size = 1000
         steps = int(N / batch_size)
-        epochs = 30
         lr = 1e-2
 
         H = int(np.sqrt(M))
@@ -122,23 +91,25 @@ class MNIST:
         y_vl = np.reshape(y_vl, [-1])
 
         sample = X_tr[0,:,:,0].reshape([1,H,W,1])
+        restore = False
 
-        dr = Simple_TF(sample=sample,
-                       lr=lr, \
-                       layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', 'batchnorm', 'dense', \
-                               'batchnorm', 'dense'], \
-                       neurons=[32, None, None, 64, None, None, 100, None, 11], \
-                       activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, tf.nn.relu, None, None], \
-                       n_class=10,
-                       epochs=epochs,
-                       steps=steps,
-                       restore=False,
-                       checkpoint='model_final')
+        basedir = self.proj_dir
 
+        dr = Simple_TF(proj_dir = basedir,
+                       sample = sample,
+                       lr = lr,
+                       layers = model["layers"] ,
+                       neurons = model["neurons"],
+                       activations = model["activations"],
+                       n_class = 10,
+                       epochs = epochs,
+                       steps = steps,
+                       restore = restore,
+                       checkpoint = "model_final")
 
         plt.figure()
         plt.grid(True)
-        plt.title("Digit Recognition Training Performance")
+        plt.title("Digit Recognition Training Performance %s"%model["id"])
         plt.xlabel("Step")
         plt.ylabel("Cross Entropy")
         plt.tight_layout()
@@ -147,19 +118,21 @@ class MNIST:
         Increase the output labels by 1 so that 0th class label is considered 1, which in turn
         prevents cross entropy from returning nan
         //////////////////////////////////////////////////////////////////////////////////////"""
-        si = 0
-        ei = batch_size
+        print("Starting training phase...")
         for epoch in range(epochs):
+            si = 0
+            ei = batch_size
             for step in range(steps):
-                global_count = (epoch * step) + step
+                global_count = (epoch * steps) + step
                 vl_indices = np.random.randint(0,N_vl,batch_size)
-                tr_cost, vl_cost, tr_accuracy, vl_accuracy = dr.optimize(X_tr[si:ei,:,:,0].reshape([-1,H,W,1]),\
-                                                                         y_tr[si:ei]+1, \
-                                                                         X_vl[vl_indices,:,:,0].reshape([-1,H,W,1]), \
-                                                                         y_vl[vl_indices]+1, \
+                tr_cost, vl_cost, tr_accuracy, vl_accuracy = dr.optimize(X_tr[si:ei,:,:,0].reshape([-1,H,W,1]),
+                                                                         y_tr[si:ei]+1,
+                                                                         X_vl[vl_indices,:,:,0].reshape([-1,H,W,1]),
+                                                                         y_vl[vl_indices]+1,
                                                                          lr, global_count)
-                print("epoch %d step: %d : tr_cost: %.3f, vl_cost: %.3f, tr_accuracy: %d%%, vl_accuracy: %d%%" % \
-                      (epoch, step, tr_cost, vl_cost, tr_accuracy, vl_accuracy))
+                print("count: %d, epoch %d step: %d : tr_cost: %.3f, vl_cost: %.3f, tr_accuracy: %d%%, "
+                      "vl_accuracy: %d%%" %
+                      (global_count, epoch, step, tr_cost, vl_cost, tr_accuracy, vl_accuracy))
 
                 if (epoch == 0 and step >= 10) or (epoch >= 1):
                     plt.scatter(global_count, tr_cost, c='b', marker='o', linewidths=0.5, alpha=0.7, \
@@ -179,22 +152,24 @@ class MNIST:
 
         plt.show()
         self.digit_rec = dr
+        if save_model:
+            self.digit_rec.save_model()
 
     def test(self):
         print("Loading test data")
         #X_test, label = self.get_test_data()
-
+        path = self.proj_dir
         try:
-            X_test = np.load("mnist_test.npy")
+            X_test = np.load("%s/mnist_test.npy"%path)
         except Exception:
             # Remove the code after debugging--------
-            X_test, y = load_data("data/test.csv", "\n", ",", target_col=0, numeric_target=True)
+            X_test, y = self.data.load_csv("%s/data/test.csv"%path, "\n", ",", target_col=0, numeric_target=True)
 
             # Uncomment this only for testing the accuracy of prediction visually
             # X_test, y = self.get_sample(X_test, y, size=10)
             X_test = np.hstack((y.reshape([-1,1]), X_test))
             del y
-            np.save("mnist_test.npy",X_test)
+            np.save(os.path.abspath("%s/mnist_test.npy"%path), X_test)
         #----------------------------------------
         batch_size = 1000
         N, M = X_test.shape
@@ -215,20 +190,18 @@ class MNIST:
                 elif os.path.isfile('tmp/model_final.meta'):
                     sample = X_test[0,:,:,0].reshape([1,H,W,1])
                     self.digit_rec = Simple_TF(sample=sample,
-                                               lr=1e-2, \
+                                               lr=1e-2,
                                                layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', \
-                                                        'batchnorm', 'dense', \
-                                                        'batchnorm', 'dense'], \
-                                               neurons=[32, None, None, 64, None, None, 100, None, 11], \
+                                                        'batchnorm', 'dense', 'batchnorm', 'dense'],
+                                               neurons=[32, None, None, 64, None, None, 100, None, 11],
                                                activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, \
-                                                            tf.nn.relu, None, None], \
+                                                            tf.nn.relu, None, None],
                                                n_class=10,
                                                epochs=None,
                                                steps=None,
                                                restore=True,
-                                               checkpoint='model-2.meta')
-                    predicted.append(self.digit_rec.predict(X=X_test[si:ei,:,:,:].reshape([-1,H,W,1]), \
-                                                            feed_dict=None))
+                                               checkpoint='model_final.meta')
+                    predicted.append(self.digit_rec.predict(X=X_test[si:ei,:,:,:].reshape([-1,H,W,1]), feed_dict=None))
                 else:
                     raise Exception("Neither Digit Recognition instance with tuned parameter nor "
                                     "valid checkpoint found to make predictions")
@@ -246,9 +219,9 @@ class MNIST:
         # print("Recall: \n{}".format(recall))
         # print("F1 Score: \n{}".format(f1_score))
         # print("Average F1 Score: %d" % (int(np.mean(f1_score))))
-        np.save("prediction_submission.npy",predicted)
+        np.save("%s/prediction_submission.npy"%path,predicted)
 
 if __name__ == '__main__':
     mnist = MNIST()
-    # mnist.train()
-    mnist.test()
+    mnist.train()
+    # mnist.test()
