@@ -7,19 +7,24 @@ from Simple_TF import Simple_TF
 import numpy as np
 from data import Data
 import tensorflow as tf
+import matplotlib
+matplotlib.use('agg')
 from matplotlib import pyplot as plt
 import os
 import time
 import progressbar
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 class MNIST:
 
     digit_rec = None
     proj_dir = None
     data = Data()
+    model = None
 
-    def __init__(self):
+    def __init__(self, model):
         self.proj_dir = self.get_proj_dir()
+        self.model = model
 
     def get_proj_dir(self):
         path = os.path.abspath("")
@@ -39,7 +44,7 @@ class MNIST:
         try:
             path = self.proj_dir
             print("Attempting to load file")
-            temp = np.load("%s/mnist.npy"%path)
+            temp = np.load("mnist.npy")
             N, M = temp.shape
             X = temp[:, :M - 1]
             y = temp[:, M - 1]
@@ -50,7 +55,7 @@ class MNIST:
             X, y = self.data.load_csv("%s/data/train.csv"%path, "\n", ",", target_col=0, numeric_target=True)
             temp = np.hstack((X, y.reshape([-1, 1])))
             print("Saving processed data")
-            np.save(os.path.abspath("../mnist.npy"), temp)
+            np.save(os.path.abspath("mnist.npy"), temp)
 
         N, M = X.shape
         if lim is not None:
@@ -71,7 +76,7 @@ class MNIST:
         X, y = self.data.load_csv("data/test.csv", "\n", ",", target_col=0, numeric_target=True)
         return X, y
 
-    def train(self, model, lim=None, partition_size=31000, epochs=30, save_model=True):
+    def train(self, lim=None, partition_size=31000, epochs=30, save_model=True):
         X, y = self.get_data(lim)
         N, _ = X.shape
         size = partition_size
@@ -94,6 +99,7 @@ class MNIST:
         restore = False
 
         basedir = self.proj_dir
+        model = self.model
 
         dr = Simple_TF(proj_dir = basedir,
                        sample = sample,
@@ -181,6 +187,7 @@ class MNIST:
 
         si = 0
         ei = batch_size
+        model = self.model
         # with tf.Session() as sess:
         with progressbar.ProgressBar(max_value=steps) as bar:
             for step in range(steps):
@@ -190,12 +197,10 @@ class MNIST:
                 elif os.path.isfile('tmp/model_final.meta'):
                     sample = X_test[0,:,:,0].reshape([1,H,W,1])
                     self.digit_rec = Simple_TF(sample=sample,
-                                               lr=1e-2,
-                                               layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', \
-                                                        'batchnorm', 'dense', 'batchnorm', 'dense'],
-                                               neurons=[32, None, None, 64, None, None, 100, None, 11],
-                                               activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, \
-                                                            tf.nn.relu, None, None],
+                                               lr=model["lr"],
+                                               layers=model["layers"],
+                                               neurons=model["neurons"],
+                                               activations=model["activations"],
                                                n_class=10,
                                                epochs=None,
                                                steps=None,
@@ -222,6 +227,14 @@ class MNIST:
         np.save("%s/prediction_submission.npy"%path,predicted)
 
 if __name__ == '__main__':
-    mnist = MNIST()
+
+    lr = 1e-2
+    layers=['conv', 'maxpool', 'batchnorm', 'conv', 'maxpool', \
+            'batchnorm', 'dense', 'batchnorm', 'dense']
+    neurons=[32, None, None, 64, None, None, 100, None, 11]
+    activations=[tf.nn.relu, None, None, tf.nn.relu, None, None, \
+                 tf.nn.relu, None, None]
+    model = {"id":0, "lr":lr, "layers":layers, "neurons":neurons, "activations":activations}
+    mnist = MNIST(model)
     mnist.train()
     # mnist.test()

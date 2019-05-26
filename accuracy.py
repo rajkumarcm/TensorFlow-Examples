@@ -9,7 +9,8 @@ def get_accuracy(labels, logits, n_class):
     recall = np.zeros([n_class])
     for i in range(n_class):
         true_pos = conf_mat[i,i]
-        indices = filter(lambda x: x!=i, np.arange(0,n_class))
+
+        indices = np.array(list(filter(lambda x: x!=i, np.arange(0,n_class))))
         false_pos = np.sum(conf_mat[indices,i])
         false_neg = np.sum(conf_mat[i,indices])
 

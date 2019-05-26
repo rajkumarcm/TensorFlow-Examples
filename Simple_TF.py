@@ -41,7 +41,9 @@ class Simple_TF:
         self.lr_ = tf.placeholder(dtype=tf.float32, shape=[])
         self.output, self.cost, self.train = self.def_graph(self.lr_, self.output, self.actual)
         self.saver = tf.train.Saver()
-        self.sess = tf.Session()
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        self.sess = tf.Session(config=config)
         if restore:
             print("Restoring model...")
             imported_meta = tf.train.import_meta_graph("%s/tmp/%s" % (proj_dir,checkpoint))
@@ -154,7 +156,7 @@ class Simple_TF:
             return tr_cost, vl_cost, tr_accuracy, vl_accuracy
 
         except KeyboardInterrupt:
-            save = raw_input("Keyboard interrupt received. Do you want to save the training? (y/n)\n")
+            save = input("Keyboard interrupt received. Do you want to save the training? (y/n)\n")
             if save == "y":
                 save_path = self.saver.save(self.sess, "%s/tmp/model"%(self.proj_dir), global_step=global_count)
                 print("Model saved in path: %s" % save_path)
