@@ -5,7 +5,6 @@ Program: Medical Image Segmentation using Deconvolutional Network
 -----------------------------------------------------------------"""
 
 import os
-os.environ["PYTHONPATH"] = '/home/rajkumarcm/Documents/TensorFlow-Examples/'
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 from Simple_TF2 import Simple_TF
 import numpy as np
@@ -86,7 +85,7 @@ class Seg:
         dir_parts = path.split("/")
         curr_dir = dir_parts[::-1][0]
         if curr_dir == "TensorFlow-Examples":
-            path = os.path.abspath("ImageSegmentation")
+            path = os.path.abspath("ImageSegmentation/2d Model")
         return path
 
     def get_tr_data(self, step, dense_rep=True):
@@ -239,7 +238,7 @@ class Seg:
                 # axes[1].imshow(tmp_lbl[0,:,:,0], cmap="bone")
                 # axes[2].imshow(prediction, cmap="bone")
                 # plt.show()
-        np.save("Model %d Results/2d_model_%d.npy" % (id, epochs), [tr_cost_epoch, vl_cost_epoch])
+        np.save("Model %d Error/2d_model_%d.npy" % (id, epochs), [tr_cost_epoch, vl_cost_epoch])
         response = input('Save the model?\n')
         if response == "y":
             seg.save_model(filename="2d_model_%d" % epochs)
