@@ -231,14 +231,14 @@ class Seg:
                 indices = prediction == 4
                 prediction[indices] = 8
                 """---------------------------------------------------"""
-                np.save("2d figures/Model %d/2d_prediction_%d.npy" % (id, epoch), prediction)
+                np.save("2d Model/Figures/Model %d/2d_prediction_%d.npy" % (id, epoch), prediction)
                 # fig, axes = plt.subplots(1, 3)
                 # plt.title("Epoch: %d" % epoch)
                 # axes[0].imshow(tmp_img[0,:,:,0], cmap="bone")
                 # axes[1].imshow(tmp_lbl[0,:,:,0], cmap="bone")
                 # axes[2].imshow(prediction, cmap="bone")
                 # plt.show()
-        np.save("Model %d Error/2d_model_%d.npy" % (id, epochs), [tr_cost_epoch, vl_cost_epoch])
+        np.save("2d Model/Model %d Error/2d_model_%d.npy" % (id, epochs), [tr_cost_epoch, vl_cost_epoch])
         response = input('Save the model?\n')
         if response == "y":
             seg.save_model(filename="2d_model_%d" % epochs)

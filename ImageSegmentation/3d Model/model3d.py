@@ -6,7 +6,6 @@ Program: 3D Image Segmentation using Deep Learning
 
 from os import listdir, environ
 from os.path import join, abspath
-environ["PYTHONPATH"] = '/home/rajkumarcm/Documents/TensorFlow-Examples/'
 environ["CUDA_VISIBLE_DEVICES"]="1"
 
 from Simple_TF2 import Simple_TF
@@ -156,13 +155,13 @@ class Seg:
     device = None
     buffered = False
     data_path = "/media/rajkumarcm/Linux Prog/data/segmentation/Medical Data/Data"
-    if environ["CUDA_VISIBLE_DEVICES"] == "0,1":
-        device = "device1"
+    if environ["CUDA_VISIBLE_DEVICES"] == "-1":
+        device = "cpu"
     else:
         device = "gpu"
 
     batch_size = 1
-    n_classes = 3
+    n_classes = 5
     steps = None
     #------------------------------------------------
 
@@ -191,7 +190,7 @@ class Seg:
         dir_parts = path.split("/")
         curr_dir = dir_parts[::-1][0]
         if curr_dir == "TensorFlow-Examples":
-            path = abspath("ImageSegmentation")
+            path = abspath("ImageSegmentation/3d Model")
         return path
 
     def update_data(self, args):
@@ -320,13 +319,13 @@ class Seg:
 
                 """---------------------------------------------------"""
                 # np.save('predicted_lbl.npy', predicted_lbl)
-                np.save("3d figures/Model %d/3d_prediction_%d.npy" % (id, epoch), predicted_lbl)
+                np.save("3d Model/Figures/Model %d/3d_prediction_%d.npy" % (id, epoch), predicted_lbl)
                 # fig, axes = plt.subplots(1, 3)
                 # axes[0].imshow(tmp_img[:, :, 100], cmap="bone")
                 # axes[1].imshow(tmp_lbl[:, :, 100], cmap="bone")
                 # axes[2].imshow(predicted_lbl[:, :, 100], cmap="bone")
                 # plt.show()
-        np.save("3d_model_%d.npy" % epochs, [tr_cost_epoch, vl_cost_epoch])
+        np.save("3d Model/Model %d Error/3d_model_%d.npy" % (id, epochs), [tr_cost_epoch, vl_cost_epoch])
         response = input('Save the model?\n')
         if response == "y":
             seg.save_model()
