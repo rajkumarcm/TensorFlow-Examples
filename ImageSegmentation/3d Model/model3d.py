@@ -110,6 +110,8 @@ def get_data(args):
     tmp_2d_background = np.zeros([depth, height, width]).astype(np.uint8)
     tmp_2d_kidney = np.zeros([depth, height, width]).astype(np.uint8)
     tmp_2d_liver = np.zeros([depth, height, width]).astype(np.uint8)
+    tmp3 = np.zeros([depth, height, width]).astype(np.uint8)
+    tmp4 = np.zeros([depth, height, width]).astype(np.uint8)
     if dense_rep:
         indices = lbl == 0
         tmp_2d_background[indices] = 1
@@ -117,14 +119,22 @@ def get_data(args):
         tmp_2d_kidney[indices] = 1
         indices = lbl == 4
         tmp_2d_liver[indices] = 1
+        indices = lbl == 7
+        tmp3[indices] = 1
+        indices = lbl == 8
+        tmp4[indices] = 1
 
         tmp[:, :, :, 0] = tmp_2d_background
         tmp[:, :, :, 1] = tmp_2d_kidney
         tmp[:, :, :, 2] = tmp_2d_liver
+        tmp[:, :, :, 3] = tmp3
+        tmp[:, :, :, 4] = tmp4
 
         del tmp_2d_background
         del tmp_2d_kidney
         del tmp_2d_liver
+        del tmp3
+        del tmp4
 
         return fname, vl_count, test_count, extract_patches(n_classes, img, tmp)
     else:
@@ -228,11 +238,11 @@ class Seg:
                         loss=self.model["loss"],
                         epochs=epochs,
                         steps=self.steps,
-                        restore=True,
+                        restore=False,
                         device=self.device,
                         batch_size=self.batch_size,
                         output_shape=self.target_shape,
-                        checkpoint="3d_model_5.meta")
+                        checkpoint="3d_model_final")
 
         plt.figure()
         pool = ThreadPool(1)
@@ -242,7 +252,7 @@ class Seg:
         tr_cost_epoch = []
         vl_cost_epoch = []
         id = model["id"]
-        for epoch in range(6, epochs):
+        for epoch in range(epochs):
             avg_tr_cost = 0
             avg_vl_cost = 0
             for step in range(self.steps):
@@ -301,6 +311,10 @@ class Seg:
                     prediction[indices] = 3
                     indices = prediction == 2
                     prediction[indices] = 4
+                    indices = prediction == 3
+                    prediction[indices] = 7
+                    indices = prediction == 4
+                    prediction[indices] = 8
                     prediction = prediction.reshape([128, 128, self.depth])
                     predictions.append(prediction)
 
@@ -336,9 +350,10 @@ class Seg:
 
 if __name__ == '__main__':
 
+    n_classes = 5
     layers = ['conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', \
               'deconv3d', 'conv3d', 'deconv3d', 'conv3d', 'deconv3d', 'conv3d']
-    neurons = [8, None, 16, None, 32, None, None, 16, None, 8, None, 3]
+    neurons = [8, None, 16, None, 32, None, None, 16, None, 8, None, n_classes]
     activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
                    None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
     # layers = ['conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', \
