@@ -1,12 +1,12 @@
-"""-------------------------------------------
+"""-----------------------------------------------------------------
 Author: Rajkumar Conjeevaram Mohan
 Email: rajkumarcm@yahoo.com
-Program: Image Segmentation using Deep Learning
---------------------------------------------"""
+Program: Medical Image Segmentation using Deconvolutional Network
+-----------------------------------------------------------------"""
 
 import os
 os.environ["PYTHONPATH"] = '/home/rajkumarcm/Documents/TensorFlow-Examples/'
-os.environ["CUDA_VISIBLE_DEVICES"]="-1"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 from Simple_TF2 import Simple_TF
 import numpy as np
 import nibabel as nib
@@ -20,7 +20,7 @@ class Seg:
     batch_size = 1
     device = None
     if os.environ["CUDA_VISIBLE_DEVICES"] == "-1":
-        device = "cpu"
+        device = "device1"
     else:
         device = "gpu"
 
@@ -51,7 +51,7 @@ class Seg:
 
         """Convert to Float to avoid numerical errors---------------------------------"""
         self.tr_imgs = self.tr_imgs.astype(np.float32)
-        tmp = np.zeros([Z, X, Y])
+        tmp = np.zeros([Z, X, Y]).astype(np.float32)
         for z in range(Z):
             tmp[z] = self.tr_imgs[:,:,z,0] / np.max(self.tr_imgs[:,:,z,0])
         self.tr_imgs = np.copy(tmp)
@@ -62,14 +62,14 @@ class Seg:
         self.tr_lbls = self.tr_lbls.astype(np.uint8)
 
         """Data for validation-----------------------------------------------------------"""
-        self.vl_imgs = nib.load("/media/rajkumarcm/Linux Prog/data/segmentation/Medical Data/Data/aff_imgs/nusurgery007.512.nii.gz")
+        self.vl_imgs = nib.load("/media/rajkumarcm/Linux Prog/data/segmentation/Medical Data/Data/aff_imgs/nusurgery009.512.nii.gz")
         self.vl_imgs = self.vl_imgs.get_data()
-        self.vl_lbls = nib.load("/media/rajkumarcm/Linux Prog/data/segmentation/Medical Data/Data/aff_lbls/nusurgery007.512.nii.gz")
+        self.vl_lbls = nib.load("/media/rajkumarcm/Linux Prog/data/segmentation/Medical Data/Data/aff_lbls/nusurgery009.512.nii.gz")
         self.vl_lbls = self.vl_lbls.get_data()
 
         """Convert to float validation set----------------------------------------------"""
         self.vl_imgs = self.vl_imgs.astype(np.float32)
-        tmp = np.zeros([Z, X, Y])
+        tmp = np.zeros([Z, X, Y]).astype(np.float32)
         for z in range(Z):
             tmp[z] = self.vl_imgs[:,:,z,0] / np.max(self.vl_imgs[:,:,z,0])
         self.vl_imgs = tmp
@@ -78,7 +78,7 @@ class Seg:
         self.vl_lbls = np.transpose(self.vl_lbls, [2, 0, 1, 3])
         self.vl_lbls = np.reshape(self.vl_lbls, [Z, X, Y])
 
-        #----------------------------------------------------------------------------------------------------------------------------
+        #--------------------------------------------------------------------------------------------------------------
 
     def get_proj_dir(self):
         path = os.path.abspath("")
@@ -90,19 +90,19 @@ class Seg:
 
     def get_tr_data(self, step, dense_rep=True):
         if dense_rep:
-            tmp1 = np.zeros([self.shape[1], self.shape[2]])  # WARNING OF HARD-CODING-----------------------
+            tmp1 = np.zeros([self.shape[1], self.shape[2]]).astype(np.float32)
             indices = self.tr_lbls[step] == 0
             tmp1[indices] = 1
 
-            tmp2 = np.zeros([self.shape[1], self.shape[2]])  # WARNING OF HARD-CODING-----------------------
+            tmp2 = np.zeros([self.shape[1], self.shape[2]]).astype(np.float32)
             indices = self.tr_lbls[step] == 3
             tmp2[indices] = 1
 
-            tmp3 = np.zeros([self.shape[1], self.shape[2]])  # WARNING OF HARD-CODING-----------------------
+            tmp3 = np.zeros([self.shape[1], self.shape[2]]).astype(np.float32)
             indices = self.tr_lbls[step] == 4
             tmp3[indices] = 1
 
-            tmp_lbl = np.zeros(self.target_shape)
+            tmp_lbl = np.zeros(self.target_shape).astype(np.float32)
             tmp_lbl[:, :, :, 0] = tmp1
             tmp_lbl[:, :, :, 1] = tmp2
             tmp_lbl[:, :, :, 2] = tmp3
@@ -117,19 +117,19 @@ class Seg:
 
     def get_vl_data(self, step, dense_rep=True):
         if dense_rep:
-            tmp1 = np.zeros([self.shape[1], self.shape[2]])  # WARNING OF HARD-CODING-----------------------
+            tmp1 = np.zeros([self.shape[1], self.shape[2]]).astype(np.float32)
             indices = self.vl_lbls[step] == 0
             tmp1[indices] = 1
 
-            tmp2 = np.zeros([self.shape[1], self.shape[2]])  # WARNING OF HARD-CODING-----------------------
+            tmp2 = np.zeros([self.shape[1], self.shape[2]]).astype(np.float32)
             indices = self.vl_lbls[step] == 3
             tmp2[indices] = 1
 
-            tmp3 = np.zeros([self.shape[1], self.shape[2]])  # WARNING OF HARD-CODING-----------------------
+            tmp3 = np.zeros([self.shape[1], self.shape[2]]).astype(np.float32)
             indices = self.vl_lbls[step] == 4
             tmp3[indices] = 1
 
-            tmp_lbl = np.zeros(self.target_shape)
+            tmp_lbl = np.zeros(self.target_shape).astype(np.float32)
             tmp_lbl[:,:,:,0] = tmp1
             tmp_lbl[:,:,:,1] = tmp2
             tmp_lbl[:,:,:,2] = tmp3
@@ -158,11 +158,14 @@ class Seg:
                         device=self.device,
                         batch_size=self.batch_size,
                         output_shape=self.target_shape,
-                        checkpoint="model_final")
+                        checkpoint="2d_model_final")
 
         plt.figure()
         tmp_img = None
         tmp_lbl = None
+        id = model["id"]
+        tr_cost_epoch = []
+        vl_cost_epoch = []
         for epoch in range(epochs):
             avg_tr_cost = 0
             avg_vl_cost = 0
@@ -182,30 +185,38 @@ class Seg:
                       (global_count, epoch, step, tr_cost, vl_cost))
             avg_tr_cost /= self.steps
             avg_vl_cost /= self.steps
+            tr_cost_epoch.append(avg_tr_cost)
+            vl_cost_epoch.append(avg_vl_cost)
             plt.scatter(epoch, avg_tr_cost, c='b', marker='.', label="Training Error")
             plt.scatter(epoch, avg_vl_cost, c='r', marker='^', label="Validation Error")
             plt.pause(1e-5)
             if epoch == 0:
                 plt.legend()
-        """Testing-------------------------------------------"""
-        tmp_img, tmp_lbl = self.get_vl_data(step=10, dense_rep=False)
-        prediction = seg.predict(X=tmp_img, feed_dict=None)
-        prediction = np.argmax(prediction[0], axis=2)
-        indices = prediction == 1
-        prediction[indices] = 3
-        indices = prediction == 2
-        prediction[indices] = 4
-        """---------------------------------------------------"""
-        fig, axes = plt.subplots(1, 3)
-        axes[0].imshow(tmp_img[0,:,:,0], cmap="bone")
-        axes[1].imshow(tmp_lbl[0,:,:,0], cmap="bone")
-        axes[2].imshow(prediction, cmap="bone")
-        plt.show()
+            if (epoch % 5 == 0) and (epoch != 0):
+                seg.save_model(filename="2d_model_%d" % epoch)
+                """Testing-------------------------------------------"""
+                tmp_img, tmp_lbl = self.get_vl_data(step=100, dense_rep=False)
+                prediction = seg.predict(X=tmp_img, feed_dict=None)
+                prediction = np.argmax(prediction[0], axis=2).astype(np.uint8)
+                indices = prediction == 1
+                prediction[indices] = 3
+                indices = prediction == 2
+                prediction[indices] = 4
+                """---------------------------------------------------"""
+                np.save("2d figures/Model %d/2d_prediction_%d.npy" % (id, epoch), prediction)
+                # fig, axes = plt.subplots(1, 3)
+                # plt.title("Epoch: %d" % epoch)
+                # axes[0].imshow(tmp_img[0,:,:,0], cmap="bone")
+                # axes[1].imshow(tmp_lbl[0,:,:,0], cmap="bone")
+                # axes[2].imshow(prediction, cmap="bone")
+                # plt.show()
+        np.save("Model %d Results\2d_model_%d.npy" % (id, epochs), [tr_cost_epoch, vl_cost_epoch])
         response = input('Save the model?\n')
         if response == "y":
-            seg.save_model()
+            seg.save_model(filename="2d_model_%d" % epochs)
         else:
             print("Program terminating...")
+            seg.sess.close()
             exit(0)
 
 
@@ -215,7 +226,14 @@ if __name__ == '__main__':
     neurons = [32, None, 64, None, 128, None, 256, None, None, 128, None, 64, None, 32, None, 3]
     activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
                    None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
-    loss= "mse"
-    model = {"id":0, "lr":1e-4, "layers":layers, "neurons":neurons, "activations":activations, "loss":"mse"}
+    loss= "cross_entropy"
+    model = {"id":2, "lr":1e-4, "layers":layers, "neurons":neurons, "activations":activations, "loss":loss}
+    # layers = ['conv', 'maxpool', 'conv', 'maxpool', 'conv', 'maxpool', \
+    #           'deconv', 'conv', 'deconv', 'conv', 'deconv', 'conv']
+    # neurons = [8, None, 16, None, 32, None, None, 16, None, 8, None, 3]
+    # activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
+    #                None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
+    # loss = "cross_entropy"
+    # model = {"id": 3, "lr": 1e-4, "layers": layers, "neurons": neurons, "activations": activations, "loss": loss}
     seg = Seg(model)
-    seg.train()
+    seg.train(epochs=30)

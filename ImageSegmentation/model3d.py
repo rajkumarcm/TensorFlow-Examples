@@ -7,7 +7,7 @@ Program: 3D Image Segmentation using Deep Learning
 from os import listdir, environ
 from os.path import join, abspath
 environ["PYTHONPATH"] = '/home/rajkumarcm/Documents/TensorFlow-Examples/'
-environ["CUDA_VISIBLE_DEVICES"]="0,1"
+environ["CUDA_VISIBLE_DEVICES"]="1"
 
 from Simple_TF2 import Simple_TF
 import numpy as np
@@ -36,13 +36,35 @@ def extract_patches(n_classes, img, lbl):
         w_ei = 128
         for j in range(int(width / patch_shape[1])):
             imgs.append(img[:, h_si:h_ei, w_si:w_ei, 0].reshape([1, depth, patch_shape[0], patch_shape[1], 1]))
-            lbls.append(lbl[:, h_si:h_ei, w_si:w_ei, :].reshape(
-                [1, depth, patch_shape[0], patch_shape[1], n_classes]))
+            lbls.append(lbl[:, h_si:h_ei, w_si:w_ei, :].reshape([1, depth, patch_shape[0], patch_shape[1],
+                                                                 n_classes]))
             w_si = w_ei
             w_ei = w_si + patch_shape[1]
         h_si = h_ei
         h_ei = h_si + patch_shape[0]
     return [imgs, lbls]
+
+def join_patches(predictions):
+    patch_shape = [128, 128]
+    height = 512
+    width = 512
+    predicted_lbl = np.zeros([512, 512, 371]).astype(np.uint8)
+
+    h_si = 0
+    h_ei = 128
+    count = 0
+    for i in range(int(height / patch_shape[0])):
+        w_si = 0
+        w_ei = 128
+        for j in range(int(width / patch_shape[1])):
+            predicted_lbl[h_si:h_ei, w_si:w_ei, :] = predictions[count]
+            w_si = w_ei
+            w_ei = w_si + patch_shape[1]
+            count += 1
+        h_si = h_ei
+        h_ei = h_si + patch_shape[0]
+
+    return predicted_lbl
 
 def get_data(args):
     depth = args['depth']
@@ -60,6 +82,7 @@ def get_data(args):
     fname = ''
     if data_type == 'training':
         fname = tr_files[step]
+        # print(fname)
     elif data_type == 'validation':
         if vl_count >= len(vl_files):
             vl_count = 0
@@ -75,49 +98,46 @@ def get_data(args):
     lbl_path = join(data_path, "aff_lbls")
     lbl_path = join(lbl_path, fname)
 
-    img = nib.load(img_path).get_data()
+    img = nib.load(img_path).get_data().astype(np.float32)
+    for d in range(depth):
+        img[:, :, d, 0] /= np.max(img[:, :, d, 0])
     height, width, _, _ = img.shape
-    img = np.transpose(img, [2, 0, 1, 3])  # .reshape([1, self.depth, height, width, 1])
-    lbl = nib.load(lbl_path).get_data()
-    lbl = np.transpose(lbl, [2, 0, 1, 3])  # .reshape([1, self.depth, height, width, 1])
+    img = np.transpose(img, [2, 0, 1, 3])  # [self.depth, height, width, 1]
+    lbl = nib.load(lbl_path).get_data().astype(np.uint8)
+    lbl = np.transpose(lbl, [2, 0, 1, 3])  # [self.depth, height, width, 1]
+    lbl = lbl[:, :, :, 0]  # [371, 512, 512]
 
-    tmp = np.zeros([depth, height, width, n_classes])
-    tmp_2d_background = np.zeros([height, width])
-    tmp_2d_kidney = np.zeros([height, width])
-    tmp_2d_liver = np.zeros([height, width])
+    tmp = np.zeros([depth, height, width, n_classes]).astype(np.uint8)
+    tmp_2d_background = np.zeros([depth, height, width]).astype(np.uint8)
+    tmp_2d_kidney = np.zeros([depth, height, width]).astype(np.uint8)
+    tmp_2d_liver = np.zeros([depth, height, width]).astype(np.uint8)
     if dense_rep:
-        for d in range(depth):
-            # tmp_lbl = lbl[0, d, :, :, 0]
-            tmp_lbl = lbl[d, :, :, 0]
-            indices = tmp_lbl == 0
-            tmp_2d_background[indices] = 1
+        indices = lbl == 0
+        tmp_2d_background[indices] = 1
+        indices = lbl == 3
+        tmp_2d_kidney[indices] = 1
+        indices = lbl == 4
+        tmp_2d_liver[indices] = 1
 
-            indices = tmp_lbl == 3
-            tmp_2d_kidney[indices] = 1
-
-            indices = tmp_lbl == 4
-            tmp_2d_liver[indices] = 1
-
-            # WARNING BATCH SIZE HARD-CODED
-            tmp[d, :, :, 0] = tmp_2d_background
-            tmp[d, :, :, 1] = tmp_2d_kidney
-            tmp[d, :, :, 2] = tmp_2d_liver
+        tmp[:, :, :, 0] = tmp_2d_background
+        tmp[:, :, :, 1] = tmp_2d_kidney
+        tmp[:, :, :, 2] = tmp_2d_liver
 
         del tmp_2d_background
         del tmp_2d_kidney
         del tmp_2d_liver
 
-        return vl_count, test_count, extract_patches(n_classes, img, tmp)
+        return fname, vl_count, test_count, extract_patches(n_classes, img, tmp)
     else:
         return [img, lbl]
 
 def get_data_main(args):
     args['data_type'] = 'training'
-    vl_count, test_count, tr_data = get_data(args)
+    _, vl_count, test_count, tr_data = get_data(args)
     args['vl_count'] = vl_count
     args['test_count'] = test_count
     args['data_type'] = 'validation'
-    vl_count, test_count, vl_data = get_data(args)
+    _, vl_count, test_count, vl_data = get_data(args)
     return vl_count, test_count, tr_data, vl_data
 
 class Seg:
@@ -137,7 +157,7 @@ class Seg:
     buffered = False
     data_path = "/media/rajkumarcm/Linux Prog/data/segmentation/Medical Data/Data"
     if environ["CUDA_VISIBLE_DEVICES"] == "0,1":
-        device = "cpu"
+        device = "device1"
     else:
         device = "gpu"
 
@@ -160,8 +180,8 @@ class Seg:
         # self.width = 112
         #-------------------------------------------------
         self.target_shape = [self.batch_size, self.depth, 128, 128, model["neurons"][::-1][0]]
-        self.steps = int(self.n_files/self.batch_size)
         self.tr_files = self.files[:partition_size[0]]
+        self.steps = int(len(self.tr_files) / self.batch_size)
         self.vl_files = self.files[partition_size[0]:partition_size[0]+partition_size[1]]
         last_index = partition_size[0] + partition_size[1]
         self.test_files = self.files[last_index:last_index+partition_size[2]]
@@ -175,13 +195,14 @@ class Seg:
         return path
 
     def update_data(self, args):
+        args = args[0]
         self.vl_count = args[0]
         self.test_count = args[1]
         self.tr_data = args[2]
         self.vl_data = args[3]
         self.buffered = True
 
-    def train(self, epochs=30):
+    def train(self, epochs=10):
         base_dir = self.proj_dir
         args = {}
         args['depth'] = self.depth
@@ -196,7 +217,7 @@ class Seg:
         args['step'] = 0
         args['dense_rep'] = True
 
-        _, _, [samples, _] = get_data(args)
+        _, _, _, [samples, sample_lbls] = get_data(args)
         sample = samples[0]
         del samples
         seg = Simple_TF(proj_dir=base_dir,
@@ -208,21 +229,21 @@ class Seg:
                         loss=self.model["loss"],
                         epochs=epochs,
                         steps=self.steps,
-                        restore=False,
+                        restore=True,
                         device=self.device,
-                        devices=self.model["devices"],
                         batch_size=self.batch_size,
                         output_shape=self.target_shape,
-                        checkpoint="model_final")
+                        checkpoint="3d_model_5.meta")
 
         plt.figure()
-        tmp_img = None
-        tmp_lbl = None
         pool = ThreadPool(1)
 
-        result = pool.map_async(get_data_main, [args])
-        self.update_data(result.get()[0])
-        for epoch in range(epochs):
+        pool.map_async(get_data_main, [args], callback=self.update_data)
+        # self.update_data(result.get()[0])
+        tr_cost_epoch = []
+        vl_cost_epoch = []
+        id = model["id"]
+        for epoch in range(6, epochs):
             avg_tr_cost = 0
             avg_vl_cost = 0
             for step in range(self.steps):
@@ -237,7 +258,7 @@ class Seg:
                 args['vl_count'] = self.vl_count
                 args['test_count'] = self.test_count
                 args['step'] = step
-                result = pool.map_async(get_data_main, [args])
+                pool.map_async(get_data_main, [args], callback=self.update_data)
                 tr_cost_img = 0
                 vl_cost_img = 0
                 n_patches = len(tr_imgs)
@@ -254,28 +275,58 @@ class Seg:
                 avg_vl_cost += (vl_cost_img/n_patches)
                 print("count: %d, epoch %d step: %d : tr_cost: %.3f, vl_cost: %.3f" %
                       (global_count, epoch, step, tr_cost_img/n_patches, vl_cost_img/n_patches))
-                self.update_data(result.get()[0])
+                # self.update_data(result.get()[0])
             avg_tr_cost /= self.steps
             avg_vl_cost /= self.steps
+            tr_cost_epoch.append(avg_tr_cost)
+            vl_cost_epoch.append(avg_vl_cost)
             plt.scatter(epoch, avg_tr_cost, c='b', marker='.', label="Training Error")
             plt.scatter(epoch, avg_vl_cost, c='r', marker='^', label="Validation Error")
             plt.pause(1e-5)
             if epoch == 0:
                 plt.legend()
-        """Testing-------------------------------------------"""
-        tmp_img, tmp_lbl = self.get_vl_data(step=10, dense_rep=False)
-        prediction = seg.predict(X=tmp_img, feed_dict=None)
-        prediction = np.argmax(prediction[0], axis=2)
-        indices = prediction == 1
-        prediction[indices] = 3
-        indices = prediction == 2
-        prediction[indices] = 4
-        """---------------------------------------------------"""
-        fig, axes = plt.subplots(1, 3)
-        axes[0].imshow(tmp_img[0,:,:,0], cmap="bone")
-        axes[1].imshow(tmp_lbl[0,:,:,0], cmap="bone")
-        axes[2].imshow(prediction, cmap="bone")
-        plt.show()
+            if (epoch % 5 == 0) and (epoch != 0):
+                seg.save_model(filename="3d_model_%d" % epoch)
+                """Testing-------------------------------------------"""
+                args['step'] = 10
+                args['data_type'] = 'testing'
+                predictions = []
+                fname, _, _, [tmp_imgs, tmp_lbls] = get_data(args)
+
+                for tmp_img, tmp_lbl, i in zip(tmp_imgs, tmp_lbls, range(len(tmp_imgs))):
+                    prediction = seg.predict(X=tmp_img, feed_dict=None)
+                    #prediction shape: [N, D, H, W, C=3]
+                    prediction = np.transpose(prediction, [0, 2, 3, 1, 4]) # [N, H, W, D, Classes]
+                    prediction = np.argmax(prediction[0], axis=3).astype(np.uint8)
+                    indices = prediction == 1
+                    prediction[indices] = 3
+                    indices = prediction == 2
+                    prediction[indices] = 4
+                    prediction = prediction.reshape([128, 128, self.depth])
+                    predictions.append(prediction)
+
+                del tmp_imgs
+                del tmp_lbls
+                del prediction
+                predicted_lbl = join_patches(predictions)
+                img_path = join(self.data_path, "aff_imgs")
+                img_path = join(img_path, fname)
+                lbl_path = join(self.data_path, "aff_lbls")
+                lbl_path = join(lbl_path, fname)
+                tmp_img = nib.load(img_path).get_data()
+                tmp_lbl = nib.load(lbl_path).get_data()
+                tmp_img = tmp_img[:, :, :, 0]
+                tmp_lbl = tmp_lbl[:, :, :, 0]
+
+                """---------------------------------------------------"""
+                # np.save('predicted_lbl.npy', predicted_lbl)
+                np.save("3d figures/Model %d/3d_prediction_%d.npy" % (id, epoch), predicted_lbl)
+                # fig, axes = plt.subplots(1, 3)
+                # axes[0].imshow(tmp_img[:, :, 100], cmap="bone")
+                # axes[1].imshow(tmp_lbl[:, :, 100], cmap="bone")
+                # axes[2].imshow(predicted_lbl[:, :, 100], cmap="bone")
+                # plt.show()
+        np.save("3d_model_%d.npy" % epochs, [tr_cost_epoch, vl_cost_epoch])
         response = input('Save the model?\n')
         if response == "y":
             seg.save_model()
@@ -285,22 +336,18 @@ class Seg:
 
 
 if __name__ == '__main__':
-    # cpu = '/cpu:0'
-    cpu = '/device:GPU:1'
-    titan = '/device:GPU:0'
+
     layers = ['conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', \
               'deconv3d', 'conv3d', 'deconv3d', 'conv3d', 'deconv3d', 'conv3d']
-    neurons = [32, None, 64, None, 128, None, None, 64, None, 32, None, 3]
-    activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.tanh, None, \
+    neurons = [8, None, 16, None, 32, None, None, 16, None, 8, None, 3]
+    activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
                    None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
-    devices = [cpu, cpu, cpu, cpu, titan, titan, titan, titan, titan, titan, titan, titan]
     # layers = ['conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', 'conv3d', 'maxpool3d', \
     #           'deconv3d', 'conv3d', 'deconv3d', 'conv3d', 'deconv3d', 'conv3d', 'deconv3d', 'conv3d']
     # neurons = [32, None, 64, None, 128, None, 256, None, None, 128, None, 64, None, 32, None, 3]
     # activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
     #                None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
-    loss= "mse"
-    model = {"id":0, "lr":1e-4, "layers":layers, "neurons":neurons, "activations":activations, "loss":"mse",
-             "devices":devices}
+    loss= "cross_entropy"
+    model = {"id":2, "lr":1e-4, "layers":layers, "neurons":neurons, "activations":activations, "loss":loss}
     seg = Seg(model)
-    seg.train()
+    seg.train(epochs=50)
