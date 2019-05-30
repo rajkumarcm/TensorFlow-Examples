@@ -30,7 +30,7 @@ class MNIST:
         path = os.path.abspath("")
         dir_parts = path.split("/")
         curr_dir = dir_parts[::-1][0]
-        if curr_dir == "TensorFlow_Examples":
+        if curr_dir == "TensorFlow-Examples":
             path = os.path.abspath("DigitRecognition")
         return path
 

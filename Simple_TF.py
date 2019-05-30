@@ -1,3 +1,9 @@
+"""-------------------------------------------
+Author: Rajkumar Conjeevaram Mohan
+Email: rajkumarcm@yahoo.com
+Program: Simple Interface for TensorFlow
+-------------------------------------------"""
+
 import tensorflow as tf
 import numpy as np
 from accuracy import get_accuracy
@@ -22,7 +28,8 @@ class Simple_TF:
     lr_ = None
     proj_dir = None
 
-    def __init__(self, proj_dir, sample, lr, layers, neurons, activations, n_class, epochs, steps, restore, checkpoint=None):
+    def __init__(self, proj_dir, sample, lr, layers, neurons, activations, n_class,
+                 epochs, steps, restore, batch_size=None, output_shape=None, checkpoint=None):
         self.proj_dir = proj_dir
         self.lr = lr
         self.layers = layers
@@ -35,21 +42,43 @@ class Simple_TF:
             raise ValueError("Checkpoint cannot be None when restore is expected")
         self.checkpoint = checkpoint
         _, H, W, C = sample.shape
-        self.output = tf.placeholder(dtype=tf.float32, shape=[None, H, W, C])
+        self.output = tf.placeholder(dtype=tf.float32, shape=[batch_size, H, W, C])
         self.output_original = self.output
-        self.actual = tf.placeholder(dtype=tf.int32, shape=[None])
+        self.actual = tf.placeholder(dtype=tf.int32, shape=output_shape) # y
         self.lr_ = tf.placeholder(dtype=tf.float32, shape=[])
         self.output, self.cost, self.train = self.def_graph(self.lr_, self.output, self.actual)
         self.saver = tf.train.Saver()
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        self.sess = tf.Session(config=config)
+        self.sess = tf.Session()
         if restore:
             print("Restoring model...")
             imported_meta = tf.train.import_meta_graph("%s/tmp/%s" % (proj_dir,checkpoint))
             imported_meta.restore(self.sess, tf.train.latest_checkpoint('%s/tmp/'%proj_dir))
         else:
             self.sess.run(tf.global_variables_initializer())
+
+    def get_bilinear_filter(self, filter_shape, upscale_factor):
+        ##filter_shape is [width, height, num_in_channels, num_out_channels]
+        kernel_size = filter_shape[1]
+        ### Centre location of the filter for which value is calculated
+        if kernel_size % 2 == 1:
+            centre_location = upscale_factor - 1
+        else:
+            centre_location = upscale_factor - 0.5
+
+        bilinear = np.zeros([filter_shape[0], filter_shape[1]])
+        for x in range(filter_shape[0]):
+            for y in range(filter_shape[1]):
+                ##Interpolation Calculation
+                value = (1 - abs((x - centre_location)/ upscale_factor)) *\
+                        (1 - abs((y - centre_location)/ upscale_factor))
+                bilinear[x, y] = value
+        weights = np.zeros(filter_shape)
+        for i in range(filter_shape[2]):
+            weights[:, :, i, i] = bilinear
+        init = tf.constant_initializer(value=weights,
+                                       dtype=tf.float32)
+        return init
+        # return tf.convert_to_tensor(weights, dtype=tf.float32)
 
     def conv2d(self, input, kernel, strides, padding, local_i):
         return tf.nn.conv2d(input, kernel, strides, padding, name='Convolution%d' % (local_i + 1))
@@ -63,6 +92,19 @@ class Simple_TF:
         bias = tf.get_variable(initializer=tf.constant_initializer(value=1, dtype=tf.float32), \
                                shape=[], trainable=True, name="ConvBias%d"%local_i)
         return activation(self.conv2d(input, weight, stride, padding, local_i) + bias)
+
+    def add_deconv(self, input, global_i, local_i, strides=[2,2], padding="same", upscale_factor=2):
+        out_channels = self.neurons[global_i]
+        in_channels = input.shape[::-1][0].value
+        # deconvolution aka upsampling makes no changes to the depth dimension so we output the
+        # same number of channels being input so 3,3,in_channels,in_channels
+        filter_init = self.get_bilinear_filter(filter_shape=[3,3,in_channels,in_channels], \
+                                               upscale_factor=upscale_factor)
+        deconv = tf.keras.layers.Conv2DTranspose(filters=in_channels, kernel_size=[3,3], \
+                                                 strides=strides, padding=padding, \
+                                                 use_bias=True, kernel_initializer=filter_init,
+                                                 name="Deconvolution%d"%local_i)
+        return deconv(input)
 
     def max_pool(self, local_i, input, k_size=[1,2,2,1], strides=[1,1,1,1], padding='SAME'):
         return tf.nn.max_pool(input, k_size, strides, padding, name="Max_Pool%d" % (local_i + 1))
@@ -95,16 +137,21 @@ class Simple_TF:
                                          name="BatchNormalization%d"%local_i)
     def def_graph(self, lr, output, actual):
         conv_count = 0
+        deconv_count = 0
         dense_count = 0
         maxpool_count = 0
         batchnorm_count = 0
 
         print("Loading graph..")
-        for global_i, layer in zip(range(len(self.layers)),self.layers):
+        for global_i, layer in zip(range(len(self.layers)), self.layers):
 
             if layer == 'conv':
                 output = self.add_conv(output, global_i, conv_count)
                 conv_count += 1
+
+            elif layer == "deconv":
+                output = self.add_deconv(output, global_i, deconv_count)
+                deconv_count += 1
 
             elif layer == 'maxpool':
                 output = self.max_pool(maxpool_count, output)
@@ -130,12 +177,9 @@ class Simple_TF:
         _,H,W,C = X.shape
         try:
             tr_feed = {self.output_original: X, self.actual: y, self.lr_: lr}
-
-            # vl_indices = np.random.randint(0, vl_input.shape[0], size=self.batch_size)
             vl_feed = {self.output_original: vl_input, self.actual: vl_y}
-            tr_cost, _ = self.sess.run([self.cost, self.train], tr_feed)
 
-            # pred_output = self.predict(tr_feed)
+            tr_cost, _ = self.sess.run([self.cost, self.train], tr_feed)
             pred_output = self.predict(X=None, feed_dict=tr_feed)
             tr_conf_mat, tr_precision, tr_recall, tr_f1_score = get_accuracy(y - 1, \
                                                                              pred_output, \
