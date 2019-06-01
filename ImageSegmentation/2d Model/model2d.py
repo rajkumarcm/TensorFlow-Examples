@@ -178,11 +178,11 @@ class Seg:
                         loss=self.model["loss"],
                         epochs=epochs,
                         steps=self.steps,
-                        restore=True,
+                        restore=False,
                         device=self.device,
                         batch_size=self.batch_size,
                         output_shape=self.target_shape,
-                        checkpoint="2d_model_30.meta")
+                        checkpoint="2d_model_final")
 
         plt.figure()
         tmp_img = None
@@ -190,7 +190,7 @@ class Seg:
         id = model["id"]
         tr_cost_epoch = []
         vl_cost_epoch = []
-        for epoch in range(30, epochs):
+        for epoch in range(epochs):
             avg_tr_cost = 0
             avg_vl_cost = 0
             for step in range(self.steps):
@@ -231,14 +231,14 @@ class Seg:
                 indices = prediction == 4
                 prediction[indices] = 8
                 """---------------------------------------------------"""
-                np.save("2d Model/Figures/Model %d/2d_prediction_%d.npy" % (id, epoch), prediction)
+                np.save("%s/Figures/Model %d/2d_prediction_%d.npy" % (self.proj_dir, id, epoch), prediction)
                 # fig, axes = plt.subplots(1, 3)
                 # plt.title("Epoch: %d" % epoch)
                 # axes[0].imshow(tmp_img[0,:,:,0], cmap="bone")
                 # axes[1].imshow(tmp_lbl[0,:,:,0], cmap="bone")
                 # axes[2].imshow(prediction, cmap="bone")
                 # plt.show()
-        np.save("2d Model/Model %d Error/2d_model_%d.npy" % (id, epochs), [tr_cost_epoch, vl_cost_epoch])
+        np.save("%s/Model %d Error/2d_model_%d.npy" % (self.proj_dir, id, epochs), [tr_cost_epoch, vl_cost_epoch])
         response = input('Save the model?\n')
         if response == "y":
             seg.save_model(filename="2d_model_%d" % epochs)
@@ -250,19 +250,19 @@ class Seg:
 
 if __name__ == '__main__':
     n_classes = 5
-    layers = ['conv', 'maxpool', 'conv', 'maxpool', 'conv', 'maxpool', 'conv', 'maxpool', \
-              'deconv', 'conv', 'deconv', 'conv', 'deconv', 'conv', 'deconv', 'conv']
-    neurons = [32, None, 64, None, 128, None, 256, None, None, 128, None, 64, None, 32, None, n_classes]
-    activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
-                   None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
-    loss= "cross_entropy"
-    model = {"id":2, "lr":1e-4, "layers":layers, "neurons":neurons, "activations":activations, "loss":loss}
-    # layers = ['conv', 'maxpool', 'conv', 'maxpool', 'conv', 'maxpool', \
-    #           'deconv', 'conv', 'deconv', 'conv', 'deconv', 'conv']
-    # neurons = [8, None, 16, None, 32, None, None, 16, None, 8, None, 3]
-    # activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
-    #                None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
-    # loss = "cross_entropy"
-    # model = {"id": 3, "lr": 1e-4, "layers": layers, "neurons": neurons, "activations": activations, "loss": loss}
+    # layers = ['conv', 'maxpool', 'conv', 'maxpool', 'conv', 'maxpool', 'conv', 'maxpool', \
+    #           'deconv', 'conv', 'deconv', 'conv', 'deconv', 'conv', 'deconv', 'conv']
+    # neurons = [32, None, 64, None, 128, None, 256, None, None, 128, None, 64, None, 32, None, n_classes]
+    # activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
+    #                None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
+    # loss= "cross_entropy"
+    # model = {"id":2, "lr":1e-4, "layers":layers, "neurons":neurons, "activations":activations, "loss":loss}
+    layers = ['conv', 'maxpool', 'conv', 'maxpool', 'conv', 'maxpool', \
+              'deconv', 'conv', 'deconv', 'conv', 'deconv', 'conv']
+    neurons = [8, None, 16, None, 32, None, None, 16, None, 8, None, n_classes]
+    activations = [tf.nn.tanh, None, tf.nn.tanh, None, tf.nn.softmax, None, \
+                   None, tf.nn.softmax, None, tf.nn.softmax, None, tf.nn.softmax]
+    loss = "cross_entropy"
+    model = {"id": 3, "lr": 1e-4, "layers": layers, "neurons": neurons, "activations": activations, "loss": loss}
     seg = Seg(model)
-    seg.train(epochs=60)
+    seg.train(epochs=51)

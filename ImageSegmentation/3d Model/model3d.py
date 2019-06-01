@@ -333,13 +333,13 @@ class Seg:
 
                 """---------------------------------------------------"""
                 # np.save('predicted_lbl.npy', predicted_lbl)
-                np.save("3d Model/Figures/Model %d/3d_prediction_%d.npy" % (id, epoch), predicted_lbl)
+                np.save("%s/Figures/Model %d/3d_prediction_%d.npy" % (self.proj_dir, id, epoch), predicted_lbl)
                 # fig, axes = plt.subplots(1, 3)
                 # axes[0].imshow(tmp_img[:, :, 100], cmap="bone")
                 # axes[1].imshow(tmp_lbl[:, :, 100], cmap="bone")
                 # axes[2].imshow(predicted_lbl[:, :, 100], cmap="bone")
                 # plt.show()
-        np.save("3d Model/Model %d Error/3d_model_%d.npy" % (id, epochs), [tr_cost_epoch, vl_cost_epoch])
+        np.save("%s/Model %d Error/3d_model_%d.npy" % (self.proj_dir, id, epochs), [tr_cost_epoch, vl_cost_epoch])
         response = input('Save the model?\n')
         if response == "y":
             seg.save_model()
